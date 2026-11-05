@@ -1,6 +1,8 @@
 
-import json
+import httpx
 import streamlit as st
+
+API_URL = "http://127.0.0.1:8000"
 
 st.set_page_config(
     page_title="Dental Edge AI",
@@ -9,11 +11,11 @@ st.set_page_config(
 )
 
 st.title("🦷 Dental Edge AI")
-st.caption("Research prototype — edge-based dental image analysis")
+st.caption("Research prototype — dental image analysis")
 
-st.info(
-    "Image upload and preview are ready. Model inference is not "
-    "integrated yet, so this interface does not diagnose dental disease."
+st.warning(
+    "Research prototype only. The trained model is not connected yet; "
+    "this app does not currently diagnose dental disease."
 )
 
 uploaded_file = st.file_uploader(
@@ -22,21 +24,47 @@ uploaded_file = st.file_uploader(
 )
 
 if uploaded_file is not None:
+    image_bytes = uploaded_file.getvalue()
+
     st.image(
-        uploaded_file,
-        caption="Uploaded image preview",
+        image_bytes,
+        caption=uploaded_file.name,
         use_container_width=True,
     )
-    st.success(f"Image loaded: {uploaded_file.name}")
 
-    st.subheader("Prediction JSON format")
-    example_payload = {
-        "image_id": uploaded_file.name,
-        "predicted_class": "pending_inference",
-        "confidence": 0.0,
-        "model_version": "not-integrated",
-    }
-    st.code(json.dumps(example_payload, indent=2), language="json")
-    st.caption(
-        "This is a schema preview only, not a prediction from an AI model."
-    )
+    if st.button("Analyze image", type="primary"):
+        with st.spinner("Sending image to the API..."):
+            try:
+                response = httpx.post(
+                    f"{API_URL}/analyze",
+                    files={
+                        "file": (
+                            uploaded_file.name,
+                            image_bytes,
+                            uploaded_file.type,
+                        )
+                    },
+                    timeout=30.0,
+                )
+
+                if response.is_success:
+                    result = response.json()
+                    st.subheader("API response")
+                    st.json(result)
+
+                    if result["status"] == "model_not_connected":
+                        st.info(
+                            "Upload successful. Real model inference "
+                            "will be enabled when the trained model is ready."
+                        )
+                else:
+                    st.error(
+                        f"API returned {response.status_code}: "
+                        f"{response.text}"
+                    )
+
+            except httpx.RequestError:
+                st.error(
+                    "Could not reach FastAPI. Start the backend and "
+                    "try again."
+                )
