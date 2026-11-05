@@ -1,6 +1,7 @@
 
 import httpx
 import streamlit as st
+from PIL import Image, ImageDraw
 
 API_URL = "http://127.0.0.1:8000"
 
@@ -13,10 +14,6 @@ st.set_page_config(
 st.title("🦷 Dental Edge AI")
 st.caption("Research prototype — dental image analysis")
 
-st.warning(
-    "Research prototype only. The trained model is not connected yet; "
-    "this app does not currently diagnose dental disease."
-)
 
 uploaded_file = st.file_uploader(
     "Upload a dental image",
@@ -49,17 +46,60 @@ if uploaded_file is not None:
 
                 if response.is_success:
                     result = response.json()
-                    st.subheader("API response")
-                    st.json(result)
+                    st.subheader("YOLO11m Detection Results")
+                    st.write("Status:", result["status"])
+                    st.write("Model:", result["model_architecture"])
+                    st.write("Inference device:", result["device"])
+                    detections = result["detections"]
 
-                    if result["status"] == "model_not_connected":
-                        st.info(
-                            "Upload successful. Real model inference "
-                            "will be enabled when the trained model is ready."
+                    if detections:
+                        image = Image.open(uploaded_file).convert("RGB")
+                        draw = ImageDraw.Draw(image)
+
+                        for item in detections:
+                            x1, y1, x2, y2 = item["bbox_xyxy"]
+                            label = (
+                                f'{item["class_name"]} '
+                                f'{item["confidence"]:.2%}'
+                            )
+
+                            draw.rectangle(
+                                [x1, y1, x2, y2],
+                                outline="red",
+                                width=3,
+                            )
+
+                            draw.text(
+                                (x1, max(0, y1 - 18)),
+                                label,
+                                fill="red",
+                            )
+
+                        st.image(
+                            image,
+                            caption="YOLO11m detected regions",
+                            use_container_width=True,
                         )
+
+                        st.subheader("Detection Details")
+
+                        st.dataframe(
+                            [
+                                {
+                                    "Class": item["class_name"],
+                                    "Confidence": item["confidence"],
+                                    "Bounding Box": item["bbox_xyxy"],
+                                }
+                                for item in detections
+                            ],
+                            use_container_width=True,
+                        )
+                    else:
+                        st.info("No objects detected above the confidence threshold.")
+
                 else:
                     st.error(
-                        f"API returned {response.status_code}: "
+                        f"Analysis failed (HTTP {response.status_code}): "
                         f"{response.text}"
                     )
 

@@ -4,3 +4,5 @@ streamlit
 httpx
 pytest
 python-multipart
+ultralytics
+pillow
