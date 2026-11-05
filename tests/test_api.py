@@ -57,3 +57,39 @@ def test_invalid_confidence_is_rejected():
         response = client.post("/predictions", json=payload)
 
     assert response.status_code == 422
+
+
+def test_analyze_image_without_model():
+    with TestClient(app) as client:
+        response = client.post(
+            "/analyze",
+            files={
+                "file": (
+                    "sample.png",
+                    b"sample image bytes",
+                    "image/png",
+                )
+            },
+        )
+
+    assert response.status_code == 200
+    result = response.json()
+    assert result["status"] == "model_not_connected"
+    assert result["inference"]["detections"] == []
+    assert result["image_id"]
+
+
+def test_analyze_rejects_unsupported_file_type():
+    with TestClient(app) as client:
+        response = client.post(
+            "/analyze",
+            files={
+                "file": (
+                    "notes.txt",
+                    b"not an image",
+                    "text/plain",
+                )
+            },
+        )
+
+    assert response.status_code == 415
