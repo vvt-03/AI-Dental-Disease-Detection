@@ -3,7 +3,8 @@ from fastapi.testclient import TestClient
 
 from cloud import database
 from cloud.main import app
-
+from io import BytesIO
+from PIL import Image
 
 def test_health_endpoint():
     with TestClient(app) as client:
@@ -59,26 +60,6 @@ def test_invalid_confidence_is_rejected():
     assert response.status_code == 422
 
 
-def test_analyze_image_without_model():
-    with TestClient(app) as client:
-        response = client.post(
-            "/analyze",
-            files={
-                "file": (
-                    "sample.png",
-                    b"sample image bytes",
-                    "image/png",
-                )
-            },
-        )
-
-    assert response.status_code == 200
-    result = response.json()
-    assert result["status"] == "model_not_connected"
-    assert result["inference"]["detections"] == []
-    assert result["image_id"]
-
-
 def test_analyze_rejects_unsupported_file_type():
     with TestClient(app) as client:
         response = client.post(
@@ -93,3 +74,51 @@ def test_analyze_rejects_unsupported_file_type():
         )
 
     assert response.status_code == 415
+
+
+def test_analyze_image_with_mocked_inference(monkeypatch):
+    # Mock inference so the test doesn't need the actual model.
+    def fake_inference(image_bytes):
+        return {
+            "status": "completed",
+            "model_version": "test-model",
+            "model_architecture": "YOLO11m",
+            "image_size": 800,
+            "device": "cpu",
+            "image_width": 100,
+            "image_height": 100,
+            "detections": [
+                {
+                    "class_id": 1,
+                    "class_name": "Caries",
+                    "confidence": 0.95,
+                    "bbox_xyxy": [10, 10, 50, 50],
+                }
+            ],
+        }
+
+    monkeypatch.setattr("cloud.main.run_inference", fake_inference)
+
+    # Create a real PNG image for the upload.
+    image = Image.new("RGB", (100, 100), color="white")
+    image_buffer = BytesIO()
+    image.save(image_buffer, format="PNG")
+    image_buffer.seek(0)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/analyze",
+            files={
+                "file": (
+                    "sample.png",
+                    image_buffer.getvalue(),
+                    "image/png",
+                )
+            },
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "completed"
+    assert len(data["detections"]) == 1
+    assert data["detections"][0]["class_name"] == "Caries"

@@ -76,9 +76,8 @@ async def analyze_image(file: UploadFile = File(...)):
     result = run_inference(image_bytes)
 
     return {
-        "image_id": image_id,
-        "filename": file.filename,
-        "status": result["status"],
-        "inference": result,
-    }
+    "image_id": image_id,
+    "filename": file.filename,
+    **result
+}
     
